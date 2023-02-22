@@ -5,10 +5,11 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart';
+import 'package:flutter_mailer/flutter_mailer.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
 import 'package:flutter/foundation.dart' as foundation;
-import 'package:gplaces/gplaces.dart';
+
 import 'package:proximity_sensor/proximity_sensor.dart';
 
 import 'package:rxdart/rxdart.dart';
@@ -49,11 +50,13 @@ class _ChatState extends State<Chat> {
   bool isPlaying = false;
   bool _isNear = false;
   late String queryText;
+  late String fulfillmentText;
   FlutterTts flutterTts = FlutterTts();
   TextEditingController controller = TextEditingController();
   double volume = 1.0;
   double pitch = 1.0;
   double speechRate = 0.5;
+  late String query;
   late List<String> languages;
   String langCode = "es-ES";
   var isActive = false;
@@ -77,7 +80,7 @@ class _ChatState extends State<Chat> {
     initPlugin();
     //_setupClient();
     listenSensor();
-    _speak("Bievenido a tu asistente");
+    _speak("Hola y bienvenido, soy tu asistente Ecco, ¿En qué puedo ayudarte?");
     super.initState();
   }
 
@@ -91,7 +94,7 @@ class _ChatState extends State<Chat> {
   }
 
   //PARTE IMPORTANTE DEL SENSOR
-  Future<void> listenSensor() async {
+  void listenSensor() {
     FlutterError.onError = (FlutterErrorDetails details) {
       if (foundation.kDebugMode) {
         FlutterError.dumpErrorToConsole(details);
@@ -113,12 +116,12 @@ class _ChatState extends State<Chat> {
   }
 
   Future hablar() async {
-    await handleStream;
+    await stopStream;
     print("se activo hablar");
   }
 
   Future escuchar() async {
-    await stopStream;
+    await handleStream;
     print("se activo escuchar");
   }
 
@@ -161,7 +164,7 @@ class _ChatState extends State<Chat> {
     _recorder.start();
     _audioStream = BehaviorSubject<List<int>>();
     _audioStreamSubscription = _recorder.audioStream.listen((data) {
-      //print("data $data");
+      print("data $data");
       _audioStream.add(data);
     });
 
@@ -185,10 +188,11 @@ class _ChatState extends State<Chat> {
       setState(() {
         String transcript = data.recognitionResult.transcript;
         queryText = data.queryResult.queryText;
-        String fulfillmentText = data.queryResult.fulfillmentText;
+        fulfillmentText = data.queryResult.fulfillmentText;
         print("fullfilment text  $fulfillmentText");
         print("este es el querytext $queryText");
-        actions(queryText);
+
+        actions(fulfillmentText);
         //actionLugares();
         if (fulfillmentText.isNotEmpty) {
           controller.text = fulfillmentText;
@@ -306,13 +310,8 @@ class _ChatState extends State<Chat> {
         places = data['results'];
         String lugar = '';
         _lugarActual = places[places.length - 1]['name'];
+        _lugarActual += places[0]['name'];
 
-        for (var i = 0; i < places.length; i++) {
-          print('data: ' + places[i].toString());
-          String place = places[i]['name'];
-          _listaLugares += '${place.toLowerCase()}, ';
-        }
-        print('lugares: $lugar');
         dialogo += _lugarActual;
         if (_listaLugares.length < 1) {
           _speak('No encontré lugares cercanos...');
@@ -323,7 +322,6 @@ class _ChatState extends State<Chat> {
       _speak(dialogo);
     }
     if (text == 'lugares') {
-      
       Position position = await _determinePosition();
       final double latitude = position.latitude;
       final double longitude = position.longitude;
@@ -366,17 +364,102 @@ class _ChatState extends State<Chat> {
 
       final url3 =
           "https://wa.me/59172230940?text=Estoy%20en%20camino.%20Consulta%20mi%20Ubicacion%20En%20este%20enlace%20de%20Google%20Maps:%20https://www.google.com/maps?q=$latitude,$longitude";
-      await launch(url3);
+      //await launch(url3)
+
+      final MailOptions mailOptions = MailOptions(
+        body:
+            'Estoy en camino. Consulta mi Ubicacion En este enlace de Google Maps: $url3',
+        subject: 'the Email Subject',
+        recipients: ['acblanco837@gmail.com'],
+        isHTML: true,
+        bccRecipients: ['other@example.com'],
+        ccRecipients: ['third@example.com'],
+        attachments: [
+          'path/to/image.png',
+        ],
+      );
+      String platformResponse;
+      try {
+        final MailerResponse response = await FlutterMailer.send(mailOptions);
+        switch (response) {
+          case MailerResponse.android:
+            platformResponse = 'intent was successful';
+            break;
+          default:
+            platformResponse = 'unknown';
+            break;
+        }
+      } on PlatformException catch (error) {
+        platformResponse = error.toString();
+        print(error);
+        if (!mounted) {
+          return;
+        }
+        await showDialog<void>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            content: Column(
+              mainAxisAlignment: MainAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  'Message',
+                  style: Theme.of(context).textTheme.subtitle1,
+                ),
+                Text(error.message ?? 'unknown error'),
+              ],
+            ),
+            contentPadding: const EdgeInsets.all(26),
+            title: Text(error.code),
+          ),
+        );
+      } catch (error) {
+        platformResponse = error.toString();
+      }
       _speak('Tu ubicacion ha sido enviada correctamente');
     }
-  }
+    if (queryText.contains("llegar")) {
+      if (fulfillmentText != "Repite el dato de destino") {
+        String destino = fulfillmentText;
+        Position position = await _determinePosition();
+        final double latitude = position.latitude;
+        final double longitude = position.longitude;
+        String origen = "$latitude,$longitude";
+        String apiKey = "AIzaSyCICIf6fafx5Jil1UFsZz22CRg1GCPJ7-M";
+        List<dynamic> places;
+        double lat = latitude;
+        double lng = longitude;
+        String indicaciones = "";
+        String paso;
+        String url =
+            'https://maps.googleapis.com/maps/api/directions/json?destination=$destino&origin=$origen&mode=walking&language=es-ES&key=$apiKey';
+        final response = await http.get(Uri.parse(url));
+        if (response.statusCode == 200) {
+          Map<String, dynamic> data = json.decode(response.body);
+          //print("data: $data['routes']['steps'] ");
+          try {
+            places = data['routes'][0]['legs'][0]['steps'];
+            for (int i = 0; i < places.length; i++) {
+              int distancia = places[i]['distance']['value'];
+              String paso = places[i]['html_instructions']
+                  .replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), ' ');
+              paso.replaceAll('1', ' ') ;
+              indicaciones += "paso $i: $paso , $distancia metros, ";
+            }
+            print(indicaciones);
+          } catch (error) {
+            print(error);
+            _speak("Lugar no encontrado");
+          }
+        }
 
-  actionLugares() async {
-    _speak("entro a lugares");
-    print("entro a lugares");
-    dialogo = "Los lugares que se encuentran a tu alrededor son:";
-    print(dialogo);
-    _speak(dialogo);
+        print('origen y destino: $destino $origen');
+        _speak(indicaciones);
+      }
+    }
   }
 }
 
