@@ -72,7 +72,6 @@ class _ChatState extends State<Chat> {
   String dialogo = '';
   // TODO DialogflowGrpc class instance
   late DialogflowGrpcV2Beta1 dialogflow;
-  //sensor to proximity
 
   @override
   void initState() {
@@ -446,7 +445,7 @@ class _ChatState extends State<Chat> {
               int distancia = places[i]['distance']['value'];
               String paso = places[i]['html_instructions']
                   .replaceAll(RegExp(r'<[^>]*>|&[^;]+;'), ' ');
-              paso.replaceAll('1', ' ') ;
+              paso.replaceAll('1', ' ');
               indicaciones += "paso $i: $paso , $distancia metros, ";
             }
             print(indicaciones);
